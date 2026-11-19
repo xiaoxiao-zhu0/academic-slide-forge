@@ -1,5 +1,6 @@
 """Runner behavior without relay credentials or paid API requests."""
 import base64
+from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
@@ -113,6 +114,67 @@ class AssetRunnerTests(unittest.TestCase):
         state_path = self.root / "state.json"
         runner.run_jobs([job], state_path, self.root / "unused.env")
         self.assertEqual("awaiting-review", json.loads(state_path.read_text(encoding="utf-8"))["stage"])
+
+    def test_uncertain_asset_survives_subset_force_and_explicit_retry(self):
+        jobs = self.strict_jobs()
+        state_path = self.root / "plan.state.json"
+        def respond(job, *_):
+            if job["id"] == "A1":
+                return {"status": "unknown", "error": "remote completion unknown"}
+            self.strict_cache(job)
+            return {"status": "generated"}
+        with patch.object(runner, "generate_job", side_effect=respond):
+            runner.run_jobs(jobs, state_path, self.root, workers=1)
+        with patch.object(runner, "generate_job") as generate:
+            runner.run_jobs(jobs, state_path, self.root, selected=["A0"])
+            runner.run_jobs(jobs, state_path, self.root, selected=["A1"], force=True)
+            generate.assert_not_called()
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual("unknown", state["assets"]["A1"]["status"])
+        self.assertEqual(["A0"], state["candidate_groups"]["concepts"]["successful_candidates"])
+        def finish(job, *_):
+            self.strict_cache(job)
+            return {"status": "generated"}
+        with patch.object(runner, "generate_job", side_effect=finish) as generate:
+            runner.run_jobs(jobs, state_path, self.root, selected=["A1"], retry_unknown=["A1"])
+            self.assertEqual([jobs[1]], [call.args[0] for call in generate.call_args_list])
+        self.assertEqual("awaiting-review", json.loads(state_path.read_text(encoding="utf-8"))["stage"])
+
+    def test_status_is_local_and_read_only_for_legacy_state(self):
+        jobs = self.jobs(2)
+        plan = self.root / "plan.json"
+        assets = [{**job, "output": str(job["output"])} for job in jobs]
+        runner.atomic_json(plan, {"assets": assets})
+        state_path = plan.with_suffix(".state.json")
+        runner.atomic_json(state_path, {"assets": {"A1": {"status": "failed",
+                           "error": "Image HTTP transport failed (curl 28); provider output withheld"}}})
+        before = state_path.read_bytes()
+        with patch.object(sys, "argv", ["runner", "--plan", str(plan), "--status"]), \
+                patch.object(runner, "load_env_file") as env, patch.object(runner, "configure_jobs") as config, \
+                patch.object(runner, "generate_job") as generate, redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(0, runner.main())
+        for action in (env, config, generate):
+            action.assert_not_called()
+        state = json.loads(output.getvalue())
+        self.assertEqual("pending", state["assets"]["A0"]["status"])
+        self.assertEqual("unknown", state["assets"]["A1"]["status"])
+        self.assertEqual(before, state_path.read_bytes())
+
+    def test_interrupted_batch_is_not_resubmitted(self):
+        jobs = self.jobs()
+        state_path = self.root / "plan.state.json"
+        runner.atomic_json(state_path, {"assets": {"A0": {"status": "queued"}}})
+        with patch.object(runner, "generate_job") as generate:
+            self.assertEqual(1, runner.run_jobs(jobs, state_path, self.root))
+            generate.assert_not_called()
+
+    def test_child_transport_deadlines_remain_uncertain(self):
+        job = self.jobs()[0]
+        for error in (b"Image HTTP transport failed (curl 28); remote completion unknown",
+                      b"Image request timed out; remote completion unknown", b"Image proxy HTTP 504"):
+            with self.subTest(error=error), patch.object(runner.subprocess, "run",
+                    return_value=subprocess.CompletedProcess([], 1, stderr=error)):
+                self.assertEqual("unknown", runner.generate_job(job, self.root, 1)["status"])
 
     def test_paths_resolve_from_plan_and_duplicates_reject(self):
         self.assertEqual(self.root / "images/0.png", self.jobs()[0]["output"])

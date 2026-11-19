@@ -17,7 +17,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.util import Inches
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_deck import check
+from check_deck import check, design_issues
 from review_state import record_review
 
 
@@ -100,6 +100,171 @@ class DeckGateTests(unittest.TestCase):
     def test_native_text_with_bitmap_illustration_passes(self):
         self.assertEqual([], self.issues())
 
+    def test_documented_template_passes_design_preflight(self):
+        document = Path(__file__).resolve().parents[2] / "references" / "page-contract.md"
+        example = document.read_text(encoding="utf-8").split("```json", 1)[1].split("```", 1)[0]
+        self.assertEqual([], design_issues(json.loads(example), self.root))
+
+    def test_legacy_plan_cannot_skip_design_checks_at_delivery(self):
+        self.stamp_reviews()
+        self.assertEqual([], self.issues())
+        errors = check(self.root / "deck_plan.json", require_fresh=True)
+        self.assertTrue(any("design_checks" in e for e in errors))
+        self.assertTrue(any("needs inference" in e for e in errors))
+
+    def complete_native_design(self):
+        self.set_design_plan("native_or_existing", requires_new=False)
+        self.plan["pages"][0]["inference"] = "The change is local to the edited edge in this case"
+
+    def set_design_plan(self, route, requires_new):
+        self.plan["delivery"]["design_checks"] = "v1"
+        self.plan["presentation_intent"] = {"requires_new_imagery": requires_new}
+        production = {"route": route, "rationale": "Expose the intervention at its working scale"}
+        self.plan["design_synthesis"]["visual_production"] = production
+        self.plan["pages"][0].update(
+            audience_question="What changed after the intervention?",
+            evidence_focus="Recorded experiment, before and after images",
+            composition="Align the before and after views at the edited edge",
+        )
+        return production
+
+    def test_preflight_catches_summary_and_reuse_before_requiring_an_export(self):
+        production = self.set_design_plan("native_or_existing", requires_new=True)
+        issues = design_issues(self.plan, self.root)
+        self.assertTrue(any("needs inference" in issue for issue in issues))
+        self.assertTrue(any("cannot fulfill a request for new imagery" in issue for issue in issues))
+        self.plan["pages"][0]["inference"] = "The change is local to the edited edge in this case"
+        self.plan["presentation_intent"]["requires_new_imagery"] = False
+        self.assertEqual([], design_issues(self.plan, self.root))
+        production["route"] = "new_components"
+        self.assertTrue(any("specific asset_ids" in issue for issue in design_issues(self.plan, self.root)))
+
+    def test_exploration_requires_complete_group_and_distinct_outputs(self):
+        production = self.set_design_plan("whole_page_exploration", requires_new=True)
+        self.plan["pages"][0]["inference"] = "The change is local to the edited edge in this case"
+        self.plan["asset_plan"] = "asset_plan.json"
+        self.asset_plan["contract"] = "asset-contract-v2"
+        for index, composition in enumerate(("aligned views", "single cross section"), 1):
+            asset = dict(self.asset_plan["assets"][0])
+            asset.update(id=f"concept-{index}", output=f"concept-{index}.png",
+                         prompt=f"fixture scene with {composition}", asset_role="design_reference",
+                         final_role="design_reference", native_reconstruction_required=True,
+                         candidate_group="edit-page", composition_id=composition,
+                         exploration_mode="exploratory", candidate_count_required=2,
+                         user_review_required=True, reference_use="none",
+                         reference_influence_policy="isolated_prompt_only")
+            if index == 1:
+                self.asset_plan["assets"][0] = asset
+            else:
+                self.asset_plan["assets"].append(asset)
+        (self.root / "asset_plan.json").write_text(json.dumps(self.asset_plan), encoding="utf-8")
+        production["asset_ids"] = ["concept-1"]
+        self.assertTrue(any("include every whole-page candidate" in issue
+                            for issue in design_issues(self.plan, self.root)))
+        production["asset_ids"].append("concept-2")
+        self.assertEqual([], design_issues(self.plan, self.root))
+        self.assertTrue(any("missing output for concept-1" in issue for issue in self.issues()))
+        for index in (1, 2):
+            Image.new("RGB", (160, 90), "blue").save(self.root / f"concept-{index}.png")
+        self.assertTrue(any("duplicate output bytes" in issue for issue in self.issues()))
+        Image.new("RGB", (160, 90), "black").save(self.root / "concept-2.png")
+        self.assertEqual([], self.issues())
+        self.plan["delivery"]["review_tracking"] = "sha256-v1"
+        record_review(self.plan, self.root, "delivery", "Fixture outputs")
+        Image.new("RGB", (160, 90), "red").save(self.root / "concept-2.png")
+        self.assertTrue(any("delivery: review missing or stale" in issue for issue in self.issues()))
+
+    def generated_page(self, intent="atmosphere"):
+        page = self.plan["pages"][0]
+        page["visual_units"].append({
+            "role": "decoration", "production": "generated",
+            "purpose": "Establish the working environment", "project_anchor": "Project context"})
+        self.plan["asset_plan"] = "asset_plan.json"
+        page["image_use"] = {
+            "intent": intent, "route": "single_asset",
+            "route_reason": "Context panel supports the native comparison without occupying its detail area",
+            "expected_contribution": "Identify the environment in which the documented change is applied"}
+        page["visual_review"]["image_integration"] = {
+            "status": "passed",
+            "visible_contribution": "The scene panel establishes the environment alongside the native comparison",
+            "removal_test": "Removing the panel preserves the argument but loses environmental context; it occupies only the context area",
+            "intent_match": "Fixture requests contextual atmosphere, not a mechanism illustration"}
+        return page
+
+    def test_native_explanation_plus_generated_insert_needs_integration_in_strict_mode(self):
+        page = self.generated_page()
+        del page["image_use"]
+        del page["visual_review"]["image_integration"]
+        self.issues()
+        issues = check(self.root / "deck_plan.json", require_fresh=True)
+        self.assertTrue(any("image_use:" in e for e in issues))
+        self.assertTrue(any("image_integration:" in e for e in issues))
+        # Legacy compatibility is explicit, not a claim of integration approval.
+        self.assertEqual([], self.issues())
+
+    def test_known_generated_placement_cannot_skip_review_by_omitting_unit(self):
+        page = self.generated_page()
+        page["visual_units"].pop()
+        del page["image_use"]
+        del page["visual_review"]["image_integration"]
+        self.issues()
+        self.assertTrue(any("image_integration:" in e for e in
+                            check(self.root / "deck_plan.json", require_fresh=True)))
+
+    def test_declared_atmosphere_can_support_native_content(self):
+        self.generated_page()
+        self.assertEqual([], self.issues())
+
+    def test_explanatory_image_requires_native_correspondence(self):
+        page = self.generated_page("explanation")
+        self.assertTrue(any("native_correspondence" in e for e in self.issues()))
+        page["visual_review"]["image_integration"]["native_correspondence"] = (
+            "The highlighted object edge is linked to the matching before/after labels")
+        self.assertEqual([], self.issues())
+        page["image_use"]["intent"] = "visual_design"
+        page["visual_units"][1].update(role="explanation", relationship="before to after",
+                                      claim_boundary="Illustration", source_paths=["source.txt"])
+        del page["visual_review"]["image_integration"]["native_correspondence"]
+        self.assertTrue(any("native_correspondence" in e for e in self.issues()))
+
+    def test_failed_or_incomplete_integration_cannot_pass(self):
+        page = self.generated_page()
+        integration = page["visual_review"]["image_integration"]
+        integration["status"] = "failed"
+        self.assertTrue(any("assessment not passed" in e for e in self.issues()))
+        integration["status"] = "passed"
+        for field in ("visible_contribution", "removal_test", "intent_match"):
+            old = integration.pop(field)
+            self.assertTrue(any(f"missing {field}" in e for e in self.issues()))
+            integration[field] = old
+        page["image_use"]["route_reason"] = " "
+        self.assertTrue(any("missing route_reason" in e for e in self.issues()))
+
+    def test_visual_review_requires_explicit_fresh_integration_observations(self):
+        page = self.generated_page()
+        self.plan["delivery"]["review_tracking"] = "sha256-v1"
+        original = copy.deepcopy(page["visual_review"])
+        with self.assertRaisesRegex(ValueError, "image_integration"):
+            record_review(self.plan, self.root, "visual", "Clear; no overlap", "P01")
+        self.assertEqual(original, page["visual_review"])
+        integration = copy.deepcopy(original["image_integration"])
+        record_review(self.plan, self.root, "visual", "Actual composed-page inspection", "P01", integration)
+        record_review(self.plan, self.root, "semantic", "Source checked", "P01")
+        record_review(self.plan, self.root, "delivery", "Export checked")
+        self.assertEqual(integration, page["visual_review"]["image_integration"])
+        self.assertEqual([], self.issues())
+        page["image_use"]["expected_contribution"] = "A different intended benefit"
+        self.assertTrue(any("stale" in e for e in self.issues()))
+        with self.assertRaisesRegex(ValueError, "image_integration"):
+            record_review(self.plan, self.root, "visual", "Rechecked", "P01")
+
+    def test_integration_cannot_be_recorded_as_export_review(self):
+        page = self.generated_page()
+        self.plan["delivery"]["review_tracking"] = "sha256-v1"
+        with self.assertRaisesRegex(ValueError, "visual page review"):
+            record_review(self.plan, self.root, "delivery", "Export checked",
+                          image_integration=page["visual_review"]["image_integration"])
+
     def test_full_page_raster_cannot_claim_native(self):
         self.make_deck(native=False)
         self.assertTrue(any("image-only" in e for e in self.issues()))
@@ -167,6 +332,7 @@ class DeckGateTests(unittest.TestCase):
 
     def test_fresh_mechanism_does_not_count_title_as_diagram(self):
         page = self.mechanism_page()
+        self.complete_native_design()
         self.stamp_reviews()
         self.issues()
         issues = check(self.root / "deck_plan.json", require_fresh=True)
@@ -286,6 +452,7 @@ class DeckGateTests(unittest.TestCase):
         self.assertEqual([], self.issues())
 
     def test_new_workflow_cannot_omit_tracking(self):
+        self.complete_native_design()
         self.issues()  # Write fixture plan.
         self.assertTrue(any("tracking is required" in e for e in
                             check(self.root / "deck_plan.json", require_fresh=True)))

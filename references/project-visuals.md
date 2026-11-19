@@ -43,13 +43,27 @@ For component-based pages:
 
 During component production, prompt the component rather than another complete slide: specify the relevant object and state, visible distinguishing detail, useful view, bounds, background treatment and exclusions. Keep deck style anchors consistent, but derive the content separately for each component. Whole-page design exploration is a separate stage; its generated labels or scientific relationships are not authoritative content to retain beneath native text.
 
+## Carry the visual plan through the body pages
+
+When expanding an approved design or responding to “what about the later pages?”, inspect the existing page roster across the remaining argument. For each affected page, identify what the audience should see, the asset/native/data treatment that will show it, and any missing production work. Record this in the existing `visual_units`, `composition` and asset plan; do not introduce another approval gate or a second planning document. A visual-rich opener or a strong sample does not establish that the later explanation pages have been addressed.
+
+“Generated images are optional” permits choosing a better representation; it does not excuse silently dropping a user's request for richer visuals. Use the relevant project screenshots, real source figures, annotated scenes, meaningful components or generated illustrations where they improve understanding or the requested visual appeal. Formula and evidence pages may remain native. Reuse a scene as deliberate shared context, not as an unchanged filler thumbnail beside unrelated paragraphs; vary the view or editable overlay when the page explains a different operation. Verify coverage in a rendered deck overview and inspect affected pages individually, without imposing an image-per-page quota.
+
 ## Adaptive image brief
+
+Before expanding a sample or repairing repetitive imagery, audit reuse in the existing deck plan. Group placements by original asset, including crops, cutouts and recolorings of the same source. Record the pages, their visual jobs, the reason for sharing that context, and any new production needed. Separate successful new generations, distinct reused assets and total placements in progress/delivery reports; placement count cannot establish visual variety.
+
+Judge reuse by meaning, not an arbitrary per-deck quota. A cover/closing motif, the same case carried through successive processing steps, or an overview thumbnail pointing back to a detailed explanation can legitimately repeat. Repeating the same scene beside unrelated claims about acquisition, construction, validation and limitations is a warning: name what each page adds visibly. If it adds only different prose or an arbitrary crop, redesign the visual unit and commission the missing subject/state/detail when appropriate. Native diagrams and real evidence remain valid choices; replacing repeated decoration with more generated decoration does not solve this problem.
+
+When the user explicitly requests fresh generated visuals, act on that request with page-specific production using the selected backend and existing authorization. Do not silently choose zero new images because the old library is convenient. If generation is unsuitable for a particular page or the backend fails, explain that concrete limit and keep working on suitable pages; do not present reuse as newly generated work. Prior reference approval remains valid within its original scope, and this audit creates no additional approval gate.
+
+After composition, inspect both the whole-deck overview and the individual pages. Ask whether repeated pictures still trace the same case/relationship and whether newly introduced topics have their own visible treatment. Record failed repetition/integration in the visual review and repair it before calling the expansion visually complete. Asset presence, permissive reuse metadata and structural-check success are insufficient.
 
 Only after choosing the role, derive a free-form prompt from the page analysis. Specify the subject and relevant state, the operation or spatial relation to convey, which details must be supplied by editable overlays, composition and text-safe area, and scientific boundaries. Choose viewpoint and medium for readability; share a small set of style anchors across the deck. Do not lock all projects into the same organ render, color palette, camera, or metaphor.
 
 Make the prompt specific through the current project's entities, states and relationships, rather than a reusable domain scene. Determine the necessary level of detail from the page's argument; keep case-specific instructions in the project asset plan.
 
-Prepare only assets needed by the selected pages. Reuse accepted illustrations if still suitable; lack of relevance is usually a page-analysis/composition problem, not a reason to repeatedly generate prettier subjects.
+Prepare only assets needed by the selected pages. Reuse accepted illustrations when their visible details still serve the page; when a new page requires a different scene, action, scale or state that the library cannot show, produce that missing asset. Do not preserve a weak match merely because a usable image file already exists.
 
 ## Domain-specific detail
 

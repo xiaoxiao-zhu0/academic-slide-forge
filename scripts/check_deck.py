@@ -6,7 +6,7 @@ from pathlib import Path
 import posixpath
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile, BadZipFile
-from review_state import freshness_issues
+from review_state import freshness_issues, has_generated_units, image_integration_issues
 from check_asset_plan import validate as validate_asset_plan
 
 
@@ -25,6 +25,102 @@ def nonempty(value):
 def review_passed(value):
     return (isinstance(value, dict) and value.get("status") == "passed"
             and nonempty(value.get("notes")))
+
+
+def design_issues(plan, root, *, require_outputs=False):
+    """Check decisions before production and verify declared image outputs at delivery."""
+    if not isinstance(plan, dict) or not isinstance(plan.get("delivery"), dict):
+        return ["design preflight: missing deck plan or delivery settings"]
+    errors = []
+    if plan["delivery"].get("design_checks") != "v1":
+        errors.append("delivery: set design_checks to v1 for design preflight")
+    pages = plan.get("pages")
+    if not isinstance(pages, list) or not pages or not all(isinstance(page, dict) for page in pages):
+        return errors + ["design preflight: missing page roster"]
+    page_ids = {page["id"] for page in pages if nonempty(page.get("id"))}
+    for page in pages:
+        decorative = page.get("page_role") in ("cover", "opener", "divider", "closing", "design_reference")
+        units = page.get("visual_units")
+        substantive_units = isinstance(units, list) and any(
+            isinstance(unit, dict) and unit.get("role") in ("evidence", "explanation")
+            for unit in units)
+        if not decorative or substantive_units:
+            for field in ("audience_question", "evidence_focus", "inference", "composition"):
+                if not nonempty(page.get(field)):
+                    errors.append(f"{page.get('id')}: design preflight needs {field}")
+
+    intent = plan.get("presentation_intent")
+    requires_new = intent.get("requires_new_imagery") if isinstance(intent, dict) else None
+    if type(requires_new) is not bool:
+        errors.append("presentation_intent: record whether the user requires new imagery")
+    synthesis = plan.get("design_synthesis")
+    production = synthesis.get("visual_production") if isinstance(synthesis, dict) else None
+    if not isinstance(production, dict):
+        return errors + ["design_synthesis: missing visual_production decision"]
+    route = production.get("route")
+    if not nonempty(production.get("rationale")):
+        errors.append("visual_production: explain what the route achieves on the page")
+    if route == "native_or_existing":
+        if requires_new is True:
+            errors.append("visual_production: native_or_existing cannot fulfill a request for new imagery")
+        return errors
+    if route not in ("new_components", "whole_page_exploration"):
+        return errors + ["visual_production: missing or invalid production route"]
+
+    targets = production.get("asset_ids")
+    if not isinstance(targets, list) or not targets or not all(nonempty(aid) for aid in targets):
+        return errors + ["visual_production: link production to specific asset_ids"]
+    asset_plan_path = plan.get("asset_plan")
+    if not nonempty(asset_plan_path):
+        return errors + ["visual_production: selected route requires an asset_plan"]
+    asset_file = root / asset_plan_path
+    try:
+        asset_plan = json.loads(asset_file.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return errors + ["visual_production: cannot read the asset_plan"]
+    asset_errors = validate_asset_plan(asset_plan, require_v2=True)
+    if asset_errors:
+        return errors + [f"asset_plan: {issue}" for issue in asset_errors]
+    assets = {asset["id"]: asset for asset in asset_plan["assets"]}
+    if len(set(targets)) != len(targets) or not set(targets).issubset(assets):
+        return errors + ["visual_production: asset_ids must be unique and exist in the asset_plan"]
+    selected = [assets[aid] for aid in targets]
+    for asset in selected:
+        if page_ids.isdisjoint(asset["page_ids"]):
+            errors.append(f"visual_production: {asset['id']} must serve a page in this deck plan")
+
+    if route == "whole_page_exploration":
+        groups = {asset.get("candidate_group") for asset in selected
+                  if asset.get("candidate_group") and asset["final_role"] == "design_reference"}
+        for group in groups:
+            members = [asset for asset in assets.values() if asset.get("candidate_group") == group]
+            if (len(members) < 2 or any(asset["final_role"] != "design_reference"
+                                       or asset["id"] not in targets for asset in members)):
+                errors.append(f"visual_production: include every whole-page candidate in group {group}")
+        if not groups:
+            errors.append("visual_production: whole_page_exploration needs a group of design-reference candidates")
+    elif not any(asset["final_role"] in ("component", "page_asset") for asset in selected):
+        errors.append("visual_production: new_components needs a component or page asset")
+
+    if require_outputs:
+        hashes_by_group = {}
+        for asset in selected:
+            output = asset_file.parent / asset["output"]
+            try:
+                pixels = output.read_bytes()
+                if not pixels:
+                    raise ValueError("Empty image output")
+            except (OSError, ValueError):
+                errors.append(f"visual_production: missing output for {asset['id']}")
+                continue
+            group = asset.get("candidate_group")
+            if group:
+                digest = hashlib.sha256(pixels).digest()
+                hashes = hashes_by_group.setdefault(group, set())
+                if digest in hashes:
+                    errors.append(f"visual_production: duplicate output bytes in candidate group {group}")
+                hashes.add(digest)
+    return errors
 
 
 def inspect_pptx(path):
@@ -82,6 +178,8 @@ def check(plan_path, require_fresh=False):
         return ["Deck plan must be an object"]
     if plan.get("schema_version") != 2:
         errors.append("Requires schema_version 2; migrate and review legacy plans")
+    if require_fresh or (isinstance(plan.get("delivery"), dict) and "design_checks" in plan["delivery"]):
+        errors.extend(design_issues(plan, root, require_outputs=True))
     if not isinstance(plan.get("project_analysis"), str) or not plan["project_analysis"].strip():
         errors.append("Missing project analysis")
     synthesis = plan.get("design_synthesis")
@@ -318,6 +416,12 @@ def check(plan_path, require_fresh=False):
         for value in arrays["evidence"]:
             file_path(value, f"{pid} source evidence")
         assets, refs = arrays["asset_paths"], arrays["asset_refs"]
+        known_generated_asset = any(isinstance(value, str)
+                                    and str((root / value).resolve()) in asset_roles
+                                    for value in assets)
+        if "image_use" in page or (require_fresh and
+                                  (has_generated_units(page) or known_generated_asset)):
+            errors.extend(f"{pid}: {issue}" for issue in image_integration_issues(page))
         if not isinstance(page.get("image_required"), bool):
             errors.append(f"{pid}: image_required must be boolean")
         if page.get("image_required") and not assets:
@@ -357,13 +461,25 @@ def main():
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--require-fresh-reviews", action="store_true",
                         help="Require version-bound reviews for new or revised decks")
+    parser.add_argument("--design-preflight", action="store_true",
+                        help="Check the argument and visual production plan before creating slides or assets")
     args = parser.parse_args()
+    if args.design_preflight:
+        try:
+            plan = json.loads(args.plan.read_text(encoding="utf-8-sig"))
+            issues = design_issues(plan, args.plan.resolve().parent)
+        except (OSError, ValueError):
+            issues = ["Cannot read a valid deck plan"]
+        print(f"{'FAIL' if issues else 'PASS'} (design plan structure): {len(issues)} issue(s)")
+        for issue in issues:
+            print(issue)
+        return int(bool(issues))
     issues = check(args.plan.resolve(), require_fresh=args.require_fresh_reviews)
     report = args.plan.resolve().with_name("deck-check.json")
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(json.dumps({"passed": not issues, "issues": issues,
         "scope": "Contract, source, recorded reviews and PPTX objects only; relevance, visibility, scientific accuracy and playback require inspection"}, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"{'FAIL' if issues else 'PASS'}: {len(issues)} issue(s); {report}")
+    print(f"{'FAIL' if issues else 'PASS'} (structural checks only): {len(issues)} issue(s); {report}")
     for issue in issues:
         print(issue)
     return 1 if issues else 0

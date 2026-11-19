@@ -93,6 +93,8 @@ def prepare_jobs(plan_path, plan, require_v2=False):
         references = resolve_references(asset.get("reference_images", []), plan_path.parent)
         jobs.append(dict(asset, id=aid, prompt=asset["prompt"].strip(), output=output,
                          reference_images=references))
+        spec = json.dumps(jobs[-1], default=str, sort_keys=True).encode()
+        jobs[-1]["plan_signature"] = hashlib.sha256(spec).hexdigest()
     return jobs
 
 
@@ -165,6 +167,9 @@ def generate_job(job, env_file, timeout):
                 # Keep a useful error class without copying provider bodies or credentials.
                 safe = re.search(r"Image (?:proxy HTTP \d{3}|HTTP transport failed \(curl \d+\))", diagnostic)
                 detail = safe.group(0) if safe else f"generator exited {completed.returncode}"
+                if ("remote completion unknown" in diagnostic or "curl 28)" in diagnostic
+                        or detail in {"Image proxy HTTP 408", "Image proxy HTTP 504", "Image proxy HTTP 524"}):
+                    return result("unknown", detail + "; remote completion unknown")
                 return result("failed", detail + "; provider output withheld; no automatic retry")
             if not image_valid(image):
                 return result("failed", "generator did not produce a valid image")
@@ -179,26 +184,91 @@ def generate_job(job, env_file, timeout):
             sidecar.replace(output.with_suffix(output.suffix + ".json"))
         return result("generated")
     except subprocess.TimeoutExpired:
-        return result("failed", "local deadline exceeded; remote completion unknown; no automatic retry")
+        return result("unknown", "local deadline exceeded; remote completion unknown")
     except (OSError, ValueError, AttributeError):
         return result("failed", "local image or metadata operation failed")
 
 
-def run_jobs(jobs, state_path, env_file, workers=2, timeout=420, force=False):
-    started = time.monotonic()
+def uncertain(record):
+    error = record.get("error", "")
+    return (record.get("status") in {"unknown", "queued"}
+            or (record.get("status") == "failed" and
+                ("remote completion unknown" in error or "(curl 28)" in error
+                 or any(f"Image proxy HTTP {code}" in error for code in (408, 504, 524)))))
+
+
+def plan_state(jobs, state_path):
+    previous = {}
+    if state_path.exists():
+        saved = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(saved, dict) or not isinstance(saved.get("assets"), dict):
+            raise ValueError("Invalid asset state; inspect it before resuming")
+        previous = saved["assets"]
     groups = {}
+    assets = {}
     for job in jobs:
+        aid = job["id"]
+        record = previous.get(aid, {})
+        if not isinstance(record, dict):
+            raise ValueError(f"Invalid asset state for {aid}")
+        if uncertain(record):
+            if record["status"] != "queued":
+                record["status"] = "unknown"
+        elif record.get("plan_signature") != job["plan_signature"]:
+            record = {}
+        elif record.get("status") in {"generated", "reused"} and not reusable(
+                dict(job, signature=record.get("request_signature"))):
+            record = {}
+        assets[aid] = record or {"output": str(job["output"]), "status": "pending"}
         group = job.get("candidate_group")
         if group:
             groups.setdefault(group, {"required": job.get("candidate_count_required", 1), "candidates": []})
             groups[group]["candidates"].append(job["id"])
-    state = {"stage": "generating", "workers": workers, "assets": {},
-             "candidate_groups": groups,
-             "contract": "asset-contract-v2" if all(contract_metadata(j)["contract"] for j in jobs) else None}
+    return {"assets": assets, "candidate_groups": groups,
+            "contract": "asset-contract-v2" if all(contract_metadata(j)["contract"] for j in jobs) else None}
+
+
+def summarize(state):
+    assets = state["assets"]
+    groups = state["candidate_groups"]
+    for group in groups.values():
+        successful = [aid for aid in group["candidates"]
+                      if assets[aid]["status"] in {"generated", "reused"}]
+        group.update(successful_candidates=successful, successful_count=len(successful),
+                     status="awaiting-review" if len(successful) >= group["required"] else "incomplete")
+    statuses = {record["status"] for record in assets.values()}
+    if "queued" in statuses:
+        return "generating"
+    if statuses.intersection({"failed", "unknown"}):
+        return "failed"
+    if "pending" in statuses or any(g["status"] == "incomplete" for g in groups.values()):
+        return "partial"
+    if groups or any(item.get("user_review_required") for item in assets.values()):
+        return "awaiting-review"
+    return "ready"
+
+
+def run_jobs(jobs, state_path, env_file, workers=2, timeout=420, force=False,
+             selected=None, retry_unknown=()):
+    started = time.monotonic()
+    state = plan_state(jobs, state_path)
+    state.update(stage="generating", workers=workers)
+    for aid, record in state["assets"].items():
+        if record["status"] == "queued":
+            record.update(status="unknown", error="previous run interrupted; remote completion unknown")
+    for aid in retry_unknown:
+        if state["assets"][aid]["status"] != "unknown":
+            raise ValueError(f"{aid} has no uncertain request to retry")
     pending = []
     for job in jobs:
-        cached = not force and reusable(job)
+        aid = job["id"]
+        if selected is not None and aid not in selected:
+            continue
+        if state["assets"][aid]["status"] == "unknown" and aid not in retry_unknown:
+            continue
+        cached = not force and aid not in retry_unknown and reusable(job)
         state["assets"][job["id"]] = {"output": str(job["output"]), "model": job["model"],
+            "plan_signature": job["plan_signature"],
             "request_signature": job["signature"], "status": "reused" if cached else "queued",
             **contract_metadata(job)}
         if not cached:
@@ -211,24 +281,14 @@ def run_jobs(jobs, state_path, env_file, workers=2, timeout=420, force=False):
             try:
                 result = future.result()
             except Exception:
-                result = {"status": "failed", "error": "unexpected worker failure; details withheld"}
+                result = {"status": "unknown", "error": "worker interrupted; remote completion unknown"}
             state["assets"][job["id"]].update(result)
             atomic_json(state_path, state)
             print(f"{job['id']}: {result['status']} ({result.get('elapsed_seconds', 0)}s)", flush=True)
-    failed = any(item["status"] == "failed" for item in state["assets"].values())
-    for group in groups.values():
-        successful = [aid for aid in group["candidates"]
-                      if state["assets"][aid]["status"] in {"generated", "reused"}]
-        group["successful_candidates"] = successful
-        group["successful_count"] = len(successful)
-        group["status"] = ("awaiting-review" if len(successful) >= group["required"]
-                           else "incomplete")
-    stage = ("failed" if failed else "partial" if any(g["status"] == "incomplete" for g in groups.values())
-             else "awaiting-review" if groups or any(j.get("user_review_required") is True for j in jobs) else "ready")
-    state.update(stage=stage, elapsed_seconds=round(time.monotonic() - started, 2))
+    state.update(stage=summarize(state), elapsed_seconds=round(time.monotonic() - started, 2))
     atomic_json(state_path, state)
     print(f"Assets {state['stage']}; state: {state_path}", flush=True)
-    return int(failed)
+    return int(state["stage"] == "failed")
 
 
 def main():
@@ -237,7 +297,11 @@ def main():
     parser.add_argument("--env-file", type=Path, default=default_env_file())
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=2)
     parser.add_argument("--timeout", type=float, default=420, help="Local per-image deadline in seconds")
-    parser.add_argument("--only", nargs="+", help="Generate/reuse only these asset IDs")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--only", nargs="+", help="Generate/reuse only these asset IDs")
+    action.add_argument("--status", action="store_true", help="Read local progress for the full plan")
+    action.add_argument("--retry-unknown", nargs="+", metavar="ID",
+                        help="Resubmit only these uncertain requests after checking with the provider")
     parser.add_argument("--force", action="store_true", help="Bypass matching image cache")
     parser.add_argument("--require-contract-v2", action="store_true",
                         help="Require the current explicit asset policy before any request")
@@ -245,13 +309,18 @@ def main():
     if not 0 < args.timeout < float("inf"):
         parser.error("timeout must be positive and finite")
     plan_path = args.plan.resolve()
+    state_path = plan_path.with_suffix(".state.json")
     try:
         jobs = prepare_jobs(plan_path, json.loads(plan_path.read_text(encoding="utf-8-sig")),
                             require_v2=args.require_contract_v2)
-        if args.only:
-            if set(args.only) - {job["id"] for job in jobs}:
-                raise ValueError("--only contains unknown asset IDs")
-            jobs = [job for job in jobs if job["id"] in args.only]
+        if args.status:
+            state = plan_state(jobs, state_path)
+            state["stage"] = summarize(state)
+            print(json.dumps(state, ensure_ascii=False, indent=2))
+            return 0
+        selected = args.retry_unknown or args.only
+        if selected and set(selected) - {job["id"] for job in jobs}:
+            raise ValueError("Unknown asset IDs")
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     lock = plan_path.with_suffix(plan_path.suffix + ".lock")
@@ -262,9 +331,11 @@ def main():
         parser.error("Plan already locked; verify recorded process has stopped before removing its lock")
     try:
         load_env_file(args.env_file)
-        configure_jobs(jobs)
-        return run_jobs(jobs, plan_path.with_suffix(".state.json"), args.env_file.resolve(),
-                        args.workers, args.timeout, args.force)
+        configure_jobs([job for job in jobs if selected is None or job["id"] in selected])
+        return run_jobs(jobs, state_path, args.env_file.resolve(), args.workers, args.timeout,
+                        args.force, selected=selected, retry_unknown=args.retry_unknown or ())
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     finally:
         lock.unlink(missing_ok=True)
 

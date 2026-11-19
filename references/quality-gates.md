@@ -33,6 +33,10 @@ Reject or revise the draft when any of these is true:
 - the slide plan claims click or motion behavior but the source contains no corresponding motion directive, stepped-slide plan, or verified PowerPoint animation;
 - the visual assets do not share the declared palette, motif, or crop logic;
 - a decorative image competes with the page takeaway or contains misleading labels;
+- generated imagery is present but its declared contribution is absent in the composed page; an unrelated native explanation elsewhere does not establish image integration;
+- a request for page-level visual improvement was reduced to inserting an asset, without assessing whether the composition actually improved;
+- an explanatory image can be removed without losing its claimed explanation, while its image/native correspondence is absent; legitimate atmosphere can remain when its intended benefit and space cost are justified;
+- asset selection is treated as approval of the composed PPTX sample;
 - the layout contradicts the user's requested density, hides requested detail in notes, or expands the page count without respecting the requested limit;
 - imagery is regenerated after negative feedback without addressing the identified intent or composition mismatch;
 - a method/results/content page has only topical decoration plus prose, with no visual explanation or source-grounded evidence;
@@ -45,3 +49,5 @@ Reject or revise the draft when any of these is true:
 Run `scripts/check_deck.py --plan <absolute-deck_plan.json> --require-fresh-reviews` for the version 2 contract, file/source references, recorded semantic/visual reviews, actual PPTX text/object checks, and review freshness when `delivery.review_tracking` is `sha256-v1`. New/revised plans must enable tracking; changed plan/files require reinspection. A legacy plan must be migrated and reviewed before it passes the strengthened gate. The checker cannot assess project relevance, prove object visibility/editability quality, or validate review notes; inspect final renders and perform the editability review for those.
 
 The review should name the failed gate and repair the smallest responsible layer rather than adding more text or more cards.
+
+For generated-image pages, the strict checker also requires `image_use` and `visual_review.image_integration` as defined in [page-contract.md](page-contract.md). It checks the presence of decisions and recorded observations, not whether those observations are true. Report a checker PASS as **structural checks passed**, separately from actual render inspection and user approval. Do not describe it as proof of visual integration, scientific validity or aesthetic quality.

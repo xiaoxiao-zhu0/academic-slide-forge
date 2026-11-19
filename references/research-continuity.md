@@ -1,10 +1,10 @@
 # Source coverage and continuity
 
-Use for project-based deck analysis and recovery after interruption or context compaction. Preserve analytical depth while avoiding repeated discovery. This is agent guidance, not an automatic watchdog or proof that sources are correct.
+Use for presentation source analysis and recovery after interruption or context compaction. Preserve analytical depth while avoiding repeated discovery. This is agent guidance, not an automatic watchdog or proof that sources are correct.
 
 ## Establish coverage, then investigate claims
 
-Start with the requested scope, the project overview and a bounded directory inventory. Identify the current specification/paper, relevant implementation or working artifacts, experiment/result records, and existing figures. Explain the overall problem, inputs, principal stages and outputs before narrowing to the requested subsystem. For a non-code project, use the corresponding design documents, work products and evaluation evidence; do not invent code or experiment requirements.
+Start with the requested scope, the audience's purpose and a bounded inventory of applicable sources. For a project, trace the relevant workflow from inputs to outputs before narrowing to the requested subsystem. Use specifications, papers, implementations, work products or result records where they exist. For a topic or lesson, identify its governing concepts, conditions and examples using the relevant source material. Select the depth by what the audience needs to understand or decide.
 
 Follow the main workflow across its interfaces. Read the source behind each substantive claim, mechanism and result that will enter the deck. Inspect surrounding definitions and assumptions, not isolated search hits. Deepen the investigation where a missing dependency, unexplained transformation, conflicting value or ambiguous responsibility could change the story. Record why an apparently relevant area is outside the requested scope; never call an unread area verified.
 
@@ -27,9 +27,19 @@ Use short findings with locators rather than copying source documents into the c
 
 ## Decide whether evidence is sufficient
 
-Move from initial analysis to page planning when the relevant whole-project workflow is explained, the proposed core claims have traceable support, and remaining uncertainties have explicit consequences. Verify these conditions in substance, not by filling empty fields:
+Before page planning, state what the audience should understand, do or decide. For each claim that materially affects that outcome, record the supporting observation, source locator and scope in the existing checkpoint. Choose the test by the role of the claim. A mixed deck can use different tests in different sections.
 
-- The story separates existing background, work actually completed, proposed behavior and measured outcomes. Main method steps and their dependencies are supported to the depth needed for this audience.
+- **Research or technical novelty.** If claiming a contribution, name the relevant prior approach and the specific mechanism, design choice, or integration introduced here. Explain what output or decision would change without it. A method description supports the design claim, a working artifact supports implementation, and an applicable evaluation supports measured improvements.
+- **Project status or delivery.** Identify the deliverable or milestone and show what a check, work product or decision record establishes about its current state. Make completed work, ongoing work and remaining dependencies clear.
+- **Product demonstration.** Start from a user task and show the actual operation and observable outcome in the stated setup. Identify prototypes and simulated inputs as such. Claims about adoption, time savings or real-world outcomes need their own evidence.
+- **Teaching or explanation.** State what the audience should be able to explain or do. Verify the governing concept, its conditions and how the worked example follows from it.
+- **Proposal or decision.** State the choice and what the recommendation depends on. Show relevant alternatives and tradeoffs where they affect the decision. Identify estimates and assumptions and which of them could change the recommendation.
+
+Apply only the relevant tests. For a straightforward fact or explanatory example, a direct source or a clearly identified constructed example can be sufficient. If a central claim exceeds its evidence, find the missing support, narrow it to the observed finding, or identify it as an assumption or open question. Record that decision before planning the affected argument.
+
+Move from initial analysis to page planning when the relevant workflow or subject is explained, the proposed core claims have traceable support, and remaining uncertainties have explicit consequences. Verify these conditions in substance:
+
+- Where relevant, the story separates existing background, work actually completed, proposed behavior and measured outcomes. Methods and their dependencies are supported to the depth needed for this audience.
 - Central quantitative results can be traced to an applicable source. Check units, metric meaning, evaluation protocol and baseline conditions; corroborate headline results against underlying records when available. If only a report is available, say so instead of implying raw-data verification.
 - Material contradictions are resolved or the affected claim remains explicitly uncertain/withheld. Missing results are not zero, a development experiment is not a final benchmark, and a proposed component is not an implemented feature.
 - Consequential user choices are known, or only the dependent decisions are held for clarification. Existing answers are carried forward.

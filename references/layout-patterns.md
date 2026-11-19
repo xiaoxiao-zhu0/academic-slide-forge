@@ -16,6 +16,14 @@ When asked for tighter pages or more content, first reclaim oversized titles, de
 
 Review representative content-heavy pages at the intended reading size. Evaluate whether the requested information is present and easy to find, not whether the page maximizes empty space. If density changes during the conversation, reflow affected pages and their image bounds; do not only change a global font-size constant.
 
+## Interpret visual feedback before reducing content
+
+“Too much text” can describe a page that feels like paragraphs because imagery and hierarchy do too little work. Check the current dialogue and rendered page before treating it as a request to delete information. If the user clarifies “too few images; organize the form,” retain that correction in the existing density policy and use the last content-complete version as the revision baseline. Do not retain a rejected shortened version merely because it is newer.
+
+Choose the repair from the observed problem: shorten repetition when brevity is requested; reorganize relationships when scanning is difficult; add useful views when explanation lacks visual support; replace an unattractive subject when its appearance is the issue. For visual reorganization, map substantive claims, evidence, conditions and limitations to their new visible locations. Use annotated scenes, paired states, detail enlargements, diagrams or image-and-caption groups as appropriate. Necessary wording can remain beside the relevant object; converting prose to a diagram must preserve its meaning. Deletion, smaller fonts and moving explanation into notes are not default substitutes for composition.
+
+Compare the revised actual render with the prior page at the same scale: can the audience see more of the process or context while still finding the required information? Record that observation in the existing visual review. Text reduction and image count alone are not success measures. Ask only if the dialogue leaves a consequential tradeoff unresolved.
+
 ## Composition examples
 
 | Pattern | Best for | Composition cue |

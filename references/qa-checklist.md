@@ -31,6 +31,10 @@ Check the rendered deck at the target aspect ratio and at least one normal prese
 - If motion is used, the reveal order matches the speaker's explanation and the first/static frame remains understandable.
 - Density matches the current dialogue and intended reading context. Compact pages retain requested technical content with clear hierarchy; spacious pages are not imposed as a universal aesthetic. Split, simplify or move detail into notes only when consistent with the user's page/content constraints.
 - Images correspond visibly to the adjacent explanation and the user's intended meaning. After negative image feedback, review the changed subject, abstraction, viewpoint or composition rather than declaring success from technical accuracy alone.
+- For a visual-organization repair, compare before/after renders at the same scale and verify that required claims, conditions and evidence remain visible. Adding imagery must address the stated complaint; a reduced word count alone does not demonstrate improvement.
+- For realistic focal subjects, apply the physical-subject and compositing checks in `image-pipeline.md`: credible parts and silhouette, useful detail at final size, clean outer edges and enclosed gaps, and clear labels. Structural checks and editable shapes do not establish attractive appearance.
+- When expanding the deck, inspect body-page visual coverage in the overview as well as individual pages. Relevant imagery must not stop at the cover or sample; native-only evidence pages remain valid when that treatment fits their task.
+- Audit repeated source images across pages, counting their crops/derivatives together. Each reuse has a visible shared-context or recall purpose; unrelated new page jobs receive suitable new imagery, native explanation or real evidence. Verify reported new generations against successful outputs, separately from reused assets and placements. A populated image box or passing reuse declaration is not evidence of variety.
 
 ## Export
 

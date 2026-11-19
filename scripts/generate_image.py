@@ -171,7 +171,11 @@ def request_image(endpoint: str, api_key: str, payload: dict, references: list |
     except urllib.error.HTTPError as exc:
         raise SystemExit(f"Image proxy HTTP {exc.code}; provider details withheld; no automatic retry") from exc
     except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError) or "timed out" in str(exc.reason).lower():
+            raise SystemExit("Image request timed out; remote completion unknown") from exc
         raise SystemExit(f"Image proxy connection failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise SystemExit("Image request timed out; remote completion unknown") from exc
     try:
         return json.loads(raw.decode("utf-8"))
     except json.JSONDecodeError as exc:
@@ -314,8 +318,9 @@ def save_record(record: dict, output: Path) -> None:
             with urllib.request.urlopen(url, timeout=180) as response:
                 output.write_bytes(response.read())
             return
-        except urllib.error.URLError as exc:
-            raise SystemExit(f"Generated image could not be downloaded: {exc.reason}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise SystemExit("Generated image could not be downloaded; remote completion unknown; "
+                             "check the existing generation before resubmitting") from exc
 
     raise SystemExit("Image record has neither b64_json nor url")
 

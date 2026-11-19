@@ -17,6 +17,20 @@ For a whole-page design reference followed by component recovery and editable re
 | Conceptual scene, scientific metaphor, texture, cutout | Image generator | Visual richness matters more than exact labels |
 | Background or atmosphere | Image generator or licensed stock | Use only when it supports hierarchy and contrast |
 
+## Physical subjects and realistic appearance
+
+Choose fidelity from the page's role and the user's stated preference. A schematic icon is suitable for an abstract node; a prominent device, organism or scene intended to look real needs a credible photo or illustration. Native PPTX editability applies to meaningful labels, relationships, data and suitable diagrams; it does not require approximating a complex physical subject with crude editable primitives.
+
+If the page must identify actual project equipment or demonstrate a built prototype, use verified project imagery. For a representative subject, inspect available real photos and their source, identity and usable rights, or generate an explicitly illustrative asset using the selected backend. An external product photo does not establish project ownership; a generated realistic image does not establish deployed hardware. Follow the existing reference-review preference when introducing external material, and keep prompt-only research separate from generation inputs. Do not regenerate assets already fit for their use.
+
+For an appearance repair, name the visible defect and intended change in the existing brief. Inspect the result both closely and at its final page size: silhouette and proportions, required parts and attachments, plausible perspective/materials, and the visibility of the detail discussed on-page. For example, an aerial-device illustration needs credible rotors, supports and camera attachment; these are conditional checks, not a fixed device template. A physically plausible but still clumsy or unreadable focal asset needs a local repair or a stated unresolved limitation, not acceptance based on connector correctness.
+
+After background removal, inspect both outer edges and enclosed gaps against the actual slide background. Remove halos and trapped background patches without erasing thin structures or legitimate highlights. Check crop, label clearance and connector endpoints after placement. Transparency metadata alone cannot establish a clean cutout. Keep this inspection in the existing visual review; compare the old and revised actual page when repairing a rejected asset.
+
+## Scene backgrounds versus flattened slides
+
+A photograph, generated scene or texture may fill the page or a large panel when atmosphere or spatial context is its intended role. Plan its crop, focal subject and quiet text regions with the real text present; use editable contrast treatments where needed. Keep meaningful labels, relationships, values and formulas in native layers. Inspect legibility at presentation size and ensure overlays do not obscure the depicted detail they explain. This is different from putting a generated complete slide, including baked-in labels or diagrams, behind duplicate text; that remains an invalid editable reconstruction. Background use does not exempt a mechanism page from showing its mechanism.
+
 ## Backend policy
 
 Keep the image backend optional and replaceable. Honor the user's explicit backend choice before the default: when the user selects a dedicated image relay, use the configured adapter in [proxy-backend.md](proxy-backend.md), including for whole-page concepts and single assets. Do not substitute the chat provider's native image tool merely because it is available. Without a selected backend, use the built-in image generation capability for ordinary one-off assets. When the user needs local execution, privacy, repeatability, or many variants, allow a local adapter such as ComfyUI's HTTP API, a Diffusers script, or InvokeAI. Do not make the skill depend on a particular model, GPU, or hosted provider unless the user chooses it.
@@ -88,7 +102,7 @@ python <skill-dir>/scripts/prepare_assets.py --plan <absolute-asset_plan.json> -
 
 Runner 为资产 sidecar/state 记录提示词哈希、参考图哈希、候选组、构图 ID、审核标记与最终用途，并在复用缓存时核对合同元数据。修改用途或审核策略后不能静默沿用旧审核记录。候选组成功数不足为 `partial`，生成失败为 `failed`，候选齐备为 `awaiting-review`；无候选组但要求用户审核的单图同样为 `awaiting-review`。`ready` 仅表示本次资产任务完成，不代表视觉验收、机制正确或 PPT 可交付。
 
-`--only` 的 state 只覆盖本次所选任务；重试一张导致候选组显示 `partial` 时不能据此重复生成其他成功图。审核前用完整计划在不加 `--force` 的情况下汇总复用已有成果，并检查组内实际成功数。生成请求、成功设计图、兼容性测试图、裁切件、页面放置次数、最终渲染页分别报告。Runner 不代替用户选择，也不自动审核图像。
+用 `--status` 在本地查看整份计划的进度和各候选组的成功数。`--only` 只处理指定素材，并保留其他素材的状态。超时且远端结果未知的素材会保留为 `unknown`；核对服务方记录并决定重发后，使用 `--retry-unknown <素材ID>`。候选齐备并检查后，助手主动展示各稿、说明差异、给出推荐并询问选择；收到回复后继续相关页面。普通单图检查后直接继续，用户明确要求审阅时主动提交审阅。分别报告生成请求、成功设计图、兼容性测试图、裁切件、页面放置次数与最终渲染页。
 
 ## 按证据定位失败
 

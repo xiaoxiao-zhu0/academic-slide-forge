@@ -28,7 +28,7 @@ Slidev `--format pptx` and packaging rendered PNGs with python-pptx produce rast
 After export:
 
 1. Confirm the requested file exists and is newer than the current run.
-2. For PDF, inspect page count with `pdfinfo` or an equivalent parser and render at least one page.
+2. During debugging, a spot render can verify an export setting. For delivery, compare the final PDF page count with the plan, render every page from that PDF, and inspect each in order for missing text or glyphs, clipping, shifted objects and legibility of charts and equations. Record the affected pages and repeat the check after correcting the export.
 3. For PPTX, inspect the actual ZIP/XML objects with the version 2 deck checker, then render the delivered PPTX with PowerPoint, LibreOffice, or another available PPTX renderer. Inspect every page. A preview from the Slidev/PDF source does not validate a separately built native PPTX. If rendering is unavailable, report the artifact as structurally checked but visually unverified; do not mark its delivery review passed.
 4. If the export is blank, retry with `--wait-until networkidle` and a finite `--wait`; do not retry indefinitely.
 5. Stop only preview processes owned by this run when no longer needed. Do not stop another task's server.
